@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>日文聽寫練習與單字庫系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            keyframes: {
+              shake: {
+                "0%, 100%": { transform: "translateX(0)" },
+                "20%": { transform: "translateX(-7px)" },
+                "40%": { transform: "translateX(7px)" },
+                "60%": { transform: "translateX(-5px)" },
+                "80%": { transform: "translateX(5px)" }
+              },
+              pop: {
+                "0%": { opacity: "0", transform: "scale(0.9)" },
+                "100%": { opacity: "1", transform: "scale(1)" }
+              },
+              fadeInUp: {
+                "0%": { opacity: "0", transform: "translateY(10px)" },
+                "100%": { opacity: "1", transform: "translateY(0)" }
+              }
+            },
+            animation: {
+              shake: "shake 0.34s ease-in-out",
+              pop: "pop 0.22s ease-out",
+              fadeInUp: "fadeInUp 0.2s ease-out"
+            }
+          }
+        }
+      };
+    </script>
+    <style>
+      body {
+        -webkit-tap-highlight-color: transparent;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+    </style>
+  </head>
+  <body class="bg-slate-100 text-slate-800">
+    <div id="root"></div>
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+      const { useEffect, useMemo, useRef, useState } = React;
+
+      const STORAGE_KEY = "jp_dictation_progress_v2";
+
+      const PRACTICE_MODES = [
+        { id: "all", label: "綜合練習" },
+        { id: "mistakes", label: "錯題特訓" },
+        { id: "favorites", label: "重點收藏" },
+        { id: "overview", label: "單字總覽" }
+      ];
+
+      const KEYBOARD_MODES = [
+        { id: "gojuon", label: "清音" },
+        { id: "dakuten", label: "濁音/半濁音" },
+        { id: "special", label: "特殊音" }
+      ];
+
+      const VOCABULARY = [
+        { id: 1, kanji: "物価", kana: "ぶっか", chinese: "物價" },
+        { id: 2, kanji: "切符", kana: "きっぷ", chinese: "車票" },
+        { id: 3, kanji: "切手", kana: "きって", chinese: "郵票" },
+        { id: 4, kanji: "一杯", kana: "いっぱい", chinese: "一杯 / 滿滿的" },
+        { id: 5, kanji: "両親", kana: "りょうしん", chinese: "雙親 / 父母" },
+        { id: 6, kanji: "結婚", kana: "けっこん", chinese: "結婚" },
+        { id: 7, kanji: "雑誌", kana: "ざっし", chinese: "雜誌" },
+        { id: 8, kanji: "作業", kana: "さぎょう", chinese: "作業 / 工作" },
+        { id: 9, kanji: "病院", kana: "びょういん", chinese: "醫院" },
+        { id: 10, kanji: "郵便局", kana: "ゆうびんきょく", chinese: "郵局" },
+        { id: 11, kanji: "竜眼", kana: "りゅうがん", chinese: "龍眼" },
+        { id: 12, kanji: "料理", kana: "りょうり", chinese: "料理" },
+        { id: 13, kanji: "東京", kana: "とうきょう", chinese: "東京" },
+        { id: 14, kanji: "京都", kana: "きょうと", chinese: "京都" },
+        { id: 15, kanji: "投票", kana: "とうひょう", chinese: "投票" },
+        { id: 16, kanji: "省略", kana: "しょうりゃく", chinese: "省略" },
+        { id: 17, kanji: "百円", kana: "ひゃくえん", chinese: "百元" },
+        { id: 18, kanji: "山脈", kana: "さんみゃく", chinese: "山脈" },
+        { id: 19, kanji: "明朝", kana: "みょうちょう", chinese: "明早" },
+        { id: 20, kanji: "蒟蒻", kana: "こんにゃく", chinese: "蒟蒻" },
+        { id: 21, kanji: "牛乳", kana: "ぎゅうにゅう", chinese: "牛奶" },
+        { id: 22, kanji: "女房", kana: "にょうぼう", chinese: "妻子 / 老婆" },
+        { id: 23, kanji: "中国人", kana: "ちゅうごくじん", chinese: "中國人" },
+        { id: 24, kanji: "蝶々", kana: "ちょうちょう", chinese: "蝴蝶" },
+        { id: 25, kanji: "中学生", kana: "ちゅうがくせい", chinese: "國中生" },
+        { id: 26, kanji: "到着", kana: "とうちゃく", chinese: "抵達" },
+        { id: 27, kanji: "離陸", kana: "りりく", chinese: "起飛" },
+        { id: 28, kanji: "写真集", kana: "しゃしんしゅう", chinese: "寫真集" },
+        { id: 29, kanji: "小学生", kana: "しょうがくせい", chinese: "小學生" },
+        { id: 30, kanji: "お客さん", kana: "おきゃくさん", chinese: "客人" },
+        { id: 31, kanji: "胡瓜", kana: "きゅうり", chinese: "小黃瓜" },
+        { id: 32, kanji: "今日", kana: "きょう", chinese: "今天" },
+        { id: 33, kanji: "明日", kana: "あした", chinese: "明天" },
+        { id: 34, kanji: "昨日", kana: "きのう", chinese: "昨天" }
+      ];
+
+      const GOJUON_PANEL = [
+        ["あ", "い", "う", "え", "お"],
+        ["か", "き", "く", "け", "こ"],
+        ["さ", "し", "す", "せ", "そ"],
+        ["た", "ち", "つ", "て", "と"],
+        ["な", "に", "ぬ", "ね", "の"],
+        ["は", "ひ", "ふ", "へ", "ほ"],
+        ["ま", "み", "む", "め", "も"],
+        ["や", "", "ゆ", "", "よ"],
+        ["ら", "り", "る", "れ", "ろ"],
+        ["わ", "", "", "を", "ん"]
+      ];
+
+      const DAKUTEN_PANEL = [
+        ["が", "ぎ", "ぐ", "げ", "ご"],
+        ["ざ", "じ", "ず", "ぜ", "ぞ"],
+        ["だ", "ぢ", "づ", "で", "ど"],
+        ["ば", "び", "ぶ", "べ", "ぼ"],
+        ["ぱ", "ぴ", "ぷ", "ぺ", "ぽ"]
+      ];
+
+      const SPECIAL_PANEL = ["ゃ", "ゅ", "ょ", "っ", "ー", "う", "い"];
+
+      function shuffleIds(ids) {
+        const arr = [...ids];
+        for (let i = arr.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+
+      function normalizeUniqueIds(input) {
+        if (!Array.isArray(input)) return [];
+        const valid = [];
+        for (let i = 0; i < input.length; i += 1) {
+          const n = Number(input[i]);
+          if (Number.isInteger(n) && n >= 1 && n <= 34) valid.push(n);
+        }
+        return Array.from(new Set(valid));
+      }
+
+      function encodeProgress(progress) {
+        return btoa(unescape(encodeURIComponent(JSON.stringify(progress))));
+      }
+
+      function decodeProgress(raw) {
+        const text = String(raw || "").trim();
+        if (!text) throw new Error("內容為空白。");
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = JSON.parse(decodeURIComponent(escape(atob(text))));
+        }
+        return {
+          mistakes: normalizeUniqueIds(parsed.mistakes),
+          favorites: normalizeUniqueIds(parsed.favorites)
+        };
+      }
+
+      function App() {
+        const [mode, setMode] = useState("all");
+        const [keyboardMode, setKeyboardMode] = useState("gojuon");
+        const [autoPlay, setAutoPlay] = useState(true);
+        const [mistakes, setMistakes] = useState([]);
+        const [favorites, setFavorites] = useState([]);
+        const [queue, setQueue] = useState([]);
+        const [queueIndex, setQueueIndex] = useState(0);
+        const [inputChars, setInputChars] = useState([]);
+        const [wrongIndexes, setWrongIndexes] = useState([]);
+        const [locked, setLocked] = useState(false);
+        const [shake, setShake] = useState(false);
+        const [statusText, setStatusText] = useState("");
+        const [showResultOverlay, setShowResultOverlay] = useState(false);
+        const [showRemoveMistakePrompt, setShowRemoveMistakePrompt] = useState(false);
+        const [isSpeaking, setIsSpeaking] = useState(false);
+        const [toast, setToast] = useState({ visible: false, text: "" });
+        const [settingsOpen, setSettingsOpen] = useState(false);
+        const [transferText, setTransferText] = useState("");
+        const [exportText, setExportText] = useState("");
+        const [settingsMessage, setSettingsMessage] = useState("");
+        const [ready, setReady] = useState(false);
+
+        const toastTimerRef = useRef(null);
+        const nextTimerRef = useRef(null);
+
+        useEffect(() => {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              setMistakes(normalizeUniqueIds(parsed.mistakes));
+              setFavorites(normalizeUniqueIds(parsed.favorites));
+            }
+          } catch {
+            setMistakes([]);
+            setFavorites([]);
+          } finally {
+            setReady(true);
+          }
+        }, []);
+
+        useEffect(() => {
+          if (!ready) return;
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({
+              mistakes: normalizeUniqueIds(mistakes),
+              favorites: normalizeUniqueIds(favorites)
+            })
+          );
+        }, [mistakes, favorites, ready]);
+
+        const vocabMap = useMemo(() => {
+          const m = new Map();
+          for (let i = 0; i < VOCABULARY.length; i += 1) m.set(VOCABULARY[i].id, VOCABULARY[i]);
+          return m;
+        }, []);
+
+        const practiceMode = mode !== "overview";
+        const modePool = useMemo(() => {
+          if (mode === "mistakes") return normalizeUniqueIds(mistakes);
+          if (mode === "favorites") return normalizeUniqueIds(favorites);
+          return VOCABULARY.map((w) => w.id);
+        }, [mode, mistakes, favorites]);
+
+        useEffect(() => {
+          if (!ready) return;
+          if (!practiceMode) {
+            setQueue([]);
+            setQueueIndex(0);
+            setInputChars([]);
+            setWrongIndexes([]);
+            setLocked(false);
+            setStatusText("");
+            setShowResultOverlay(false);
+            setShowRemoveMistakePrompt(false);
+            return;
+          }
+          if (modePool.length === 0) {
+            setQueue([]);
+            setQueueIndex(0);
+            setInputChars([]);
+            setWrongIndexes([]);
+            setLocked(false);
+            setStatusText("");
+            setShowResultOverlay(false);
+            setShowRemoveMistakePrompt(false);
+            return;
+          }
+          setQueue(shuffleIds(modePool));
+          setQueueIndex(0);
+        }, [mode, modePool, practiceMode, ready]);
+
+        const currentId = queue.length > 0 ? queue[queueIndex] : null;
+        const current = currentId ? vocabMap.get(currentId) : null;
+        const answerChars = useMemo(() => (current ? Array.from(current.kana) : []), [current]);
+        const firstEmpty = inputChars.findIndex((c) => c === "");
+
+        useEffect(() => {
+          if (!practiceMode || !current) return;
+          setInputChars(Array(answerChars.length).fill(""));
+          setWrongIndexes([]);
+          setLocked(false);
+          setShake(false);
+          setStatusText("");
+          setShowResultOverlay(false);
+          setShowRemoveMistakePrompt(false);
+          window.speechSynthesis.cancel();
+          setIsSpeaking(false);
+          if (autoPlay) {
+            setTimeout(() => speakKana(current.kana), 160);
+          }
+        }, [current, answerChars.length, autoPlay, practiceMode]);
+
+        useEffect(() => {
+          if (!practiceMode || !current || locked) return;
+          if (inputChars.length > 0 && firstEmpty === -1) {
+            checkAnswer(inputChars);
+          }
+        }, [inputChars, firstEmpty, current, locked, practiceMode]);
+
+        useEffect(() => {
+          return () => {
+            if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+            if (nextTimerRef.current) clearTimeout(nextTimerRef.current);
+            window.speechSynthesis.cancel();
+          };
+        }, []);
+
+        function triggerToast(text) {
+          if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+          setToast({ visible: true, text });
+          toastTimerRef.current = setTimeout(() => {
+            setToast({ visible: false, text: "" });
+          }, 1450);
+        }
+
+        function speakKana(kana) {
+          if (!("speechSynthesis" in window)) {
+            setStatusText("此瀏覽器不支援語音播放。");
+            return;
+          }
+          window.speechSynthesis.cancel();
+          const utter = new SpeechSynthesisUtterance(kana);
+          utter.lang = "ja-JP";
+          utter.rate = 0.9;
+          utter.pitch = 1.0;
+          utter.onstart = () => setIsSpeaking(true);
+          utter.onend = () => setIsSpeaking(false);
+          utter.onerror = () => {
+            setIsSpeaking(false);
+            setStatusText("播放失敗，請稍後再試。");
+          };
+          window.speechSynthesis.speak(utter);
+        }
+
+        function nextQuestion() {
+          if (!practiceMode || queue.length === 0) return;
+          setQueueIndex((prev) => {
+            const next = prev + 1;
+            if (next < queue.length) return next;
+            setQueue(shuffleIds(modePool));
+            return 0;
+          });
+        }
+
+        function addMistakeOnce(id) {
+          setMistakes((prev) => {
+            if (prev.includes(id)) return prev;
+            const next = [...prev, id];
+            triggerToast("已加入錯題本");
+            return next;
+          });
+        }
+
+        function toggleFavorite(id) {
+          setFavorites((prev) => {
+            if (prev.includes(id)) {
+              triggerToast("已取消收藏");
+              return prev.filter((x) => x !== id);
+            }
+            triggerToast("已加入收藏");
+            return [...prev, id];
+          });
+        }
+
+        function inputKana(ch) {
+          if (!practiceMode || !current || locked) return;
+          const idx = inputChars.findIndex((x) => x === "");
+          if (idx === -1) return;
+          const next = [...inputChars];
+          next[idx] = ch;
+          setInputChars(next);
+          setWrongIndexes([]);
+          if (statusText) setStatusText("");
+        }
+
+        function backspace() {
+          if (!practiceMode || !current || locked) return;
+          let idx = -1;
+          for (let i = inputChars.length - 1; i >= 0; i -= 1) {
+            if (inputChars[i] !== "") {
+              idx = i;
+              break;
+            }
+          }
+          if (idx === -1) return;
+          const next = [...inputChars];
+          next[idx] = "";
+          setInputChars(next);
+          setWrongIndexes([]);
+          setStatusText("");
+        }
+
+        function clearAll() {
+          if (!practiceMode || !current || locked) return;
+          setInputChars(Array(answerChars.length).fill(""));
+          setWrongIndexes([]);
+          setStatusText("");
+        }
+
+        function checkAnswer(candidate) {
+          if (!practiceMode || !current) return;
+          const wrong = [];
+          for (let i = 0; i < answerChars.length; i += 1) {
+            if (candidate[i] !== answerChars[i]) wrong.push(i);
+          }
+          if (wrong.length === 0) {
+            setWrongIndexes([]);
+            setStatusText("答對！");
+            setLocked(true);
+            setShowResultOverlay(true);
+            if (mode === "mistakes" && mistakes.includes(current.id)) {
+              setShowRemoveMistakePrompt(true);
+            } else {
+              setShowRemoveMistakePrompt(false);
+            }
+            nextTimerRef.current = setTimeout(() => {
+              setShowResultOverlay(false);
+              setShowRemoveMistakePrompt(false);
+              nextQuestion();
+            }, 1500);
+          } else {
+            setWrongIndexes(wrong);
+            setStatusText("有錯字，請手動刪除錯誤字元後重填。");
+            setShake(false);
+            requestAnimationFrame(() => setShake(true));
+            setTimeout(() => setShake(false), 350);
+            addMistakeOnce(current.id);
+          }
+        }
+
+        function removeFromMistakeBook(id) {
+          setMistakes((prev) => prev.filter((x) => x !== id));
+          setShowRemoveMistakePrompt(false);
+          triggerToast("已移出錯題本");
+        }
+
+        function openSettings() {
+          const progress = {
+            mistakes: normalizeUniqueIds(mistakes),
+            favorites: normalizeUniqueIds(favorites)
+          };
+          const encoded = encodeProgress(progress);
+          setExportText(encoded);
+          setTransferText(encoded);
+          setSettingsMessage("");
+          setSettingsOpen(true);
+        }
+
+        function refreshExportString() {
+          const progress = {
+            mistakes: normalizeUniqueIds(mistakes),
+            favorites: normalizeUniqueIds(favorites)
+          };
+          const encoded = encodeProgress(progress);
+          setExportText(encoded);
+          setTransferText(encoded);
+          setSettingsMessage("已重新產生最新備份字串。");
+        }
+
+        async function copyExportString() {
+          if (!exportText) return;
+          try {
+            await navigator.clipboard.writeText(exportText);
+            setSettingsMessage("已複製備份字串。");
+          } catch {
+            setSettingsMessage("無法自動複製，請手動全選複製。");
+          }
+        }
+
+        function importProgress() {
+          try {
+            const decoded = decodeProgress(transferText);
+            setMistakes(decoded.mistakes);
+            setFavorites(decoded.favorites);
+            setSettingsMessage("匯入成功，進度已更新。");
+            setExportText(encodeProgress(decoded));
+          } catch (err) {
+            setSettingsMessage(`匯入失敗：${err.message}`);
+          }
+        }
+
+        function keyboardRows(rows, isSpecialColor) {
+          return rows.map((row, rowIdx) => (
+            <div key={`row-${rowIdx}`} className="grid grid-cols-5 gap-2">
+              {row.map((ch, colIdx) => {
+                if (!ch) return <div key={`empty-${rowIdx}-${colIdx}`} className="min-h-[44px]" />;
+                return (
+                  <button
+                    key={ch}
+                    type="button"
+                    onClick={() => inputKana(ch)}
+                    className={[
+                      "min-h-[44px] rounded-lg border text-[24px] font-medium leading-none shadow-sm transition",
+                      "focus:outline-none focus:ring-2 focus:ring-blue-300 active:scale-95",
+                      isSpecialColor
+                        ? "border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200"
+                        : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+                    ].join(" ")}
+                  >
+                    {ch}
+                  </button>
+                );
+              })}
+            </div>
+          ));
+        }
+
+        function renderKeyboardPanel() {
+          if (keyboardMode === "gojuon") {
+            return <div className="space-y-2">{keyboardRows(GOJUON_PANEL, false)}</div>;
+          }
+          if (keyboardMode === "dakuten") {
+            return <div className="space-y-2">{keyboardRows(DAKUTEN_PANEL, false)}</div>;
+          }
+          return (
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+              {SPECIAL_PANEL.map((ch) => (
+                <button
+                  key={ch}
+                  type="button"
+                  onClick={() => inputKana(ch)}
+                  className="min-h-[44px] rounded-lg border border-cyan-300 bg-cyan-100 text-[24px] font-semibold text-cyan-900 shadow-sm transition hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-300 active:scale-95"
+                >
+                  {ch}
+                </button>
+              ))}
+            </div>
+          );
+        }
+
+        const modeCountText =
+          mode === "all"
+            ? `題庫 ${VOCABULARY.length} 題`
+            : mode === "mistakes"
+            ? `錯題 ${mistakes.length} 題`
+            : mode === "favorites"
+            ? `收藏 ${favorites.length} 題`
+            : `總覽 ${VOCABULARY.length} 題`;
+
+        return (
+          <div className="min-h-screen px-3 py-4 sm:px-4 sm:py-6">
+            <div className="mx-auto w-full max-w-2xl space-y-4">
+              <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h1 className="text-base font-bold sm:text-lg">日文聽寫練習與單字庫系統</h1>
+                  <button
+                    type="button"
+                    onClick={openSettings}
+                    className="min-h-[40px] min-w-[40px] rounded-lg border border-slate-300 bg-slate-100 px-2 text-lg transition hover:bg-slate-200"
+                    aria-label="開啟設定"
+                  >
+                    ⚙️
+                  </button>
+                </div>
+
+                <div className="hide-scrollbar -mx-1 overflow-x-auto px-1">
+                  <div className="flex min-w-max gap-2">
+                    {PRACTICE_MODES.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setMode(tab.id)}
+                        className={[
+                          "min-h-[44px] whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold transition",
+                          mode === tab.id
+                            ? "border-blue-400 bg-blue-100 text-blue-900"
+                            : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                        ].join(" ")}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="mt-2 text-center text-xs text-slate-500 sm:text-sm">{modeCountText}</p>
+              </section>
+
+              {mode === "overview" && (
+                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                  <div className="space-y-2">
+                    {VOCABULARY.map((word) => (
+                      <div key={word.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-2xl font-bold text-slate-800">{word.kanji}</p>
+                            <p className="text-lg text-slate-600">{word.kana}</p>
+                            <p className="text-sm text-slate-500">{word.chinese}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => speakKana(word.kana)}
+                              className="min-h-[44px] rounded-lg border border-emerald-300 bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-200"
+                            >
+                              🔊
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleFavorite(word.id)}
+                              className={[
+                                "min-h-[44px] rounded-lg border px-3 py-2 text-sm font-semibold transition",
+                                favorites.includes(word.id)
+                                  ? "border-amber-400 bg-amber-100 text-amber-800 hover:bg-amber-200"
+                                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                              ].join(" ")}
+                            >
+                              {favorites.includes(word.id) ? "⭐" : "☆"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {practiceMode && (
+                <>
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h2 className="text-lg font-bold sm:text-xl">聽寫練習</h2>
+                      <span className="text-xs text-slate-500 sm:text-sm">
+                        {queue.length > 0 ? `第 ${queueIndex + 1} / ${queue.length} 題` : "無可練習題目"}
+                      </span>
+                    </div>
+
+                    {mode === "mistakes" && queue.length === 0 && (
+                      <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-center text-emerald-700">
+                        目前無錯題，太棒了！
+                      </div>
+                    )}
+
+                    {mode === "favorites" && queue.length === 0 && (
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-center text-amber-700">
+                        目前無收藏題目，先在其他模式加星吧！
+                      </div>
+                    )}
+
+                    {current && (
+                      <>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => speakKana(current.kana)}
+                            className={[
+                              "min-h-[44px] rounded-lg border px-4 py-2 text-sm font-semibold transition",
+                              isSpeaking
+                                ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                                : "border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                            ].join(" ")}
+                          >
+                            🔊 播放發音
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAutoPlay((v) => !v)}
+                            className={[
+                              "min-h-[44px] rounded-lg border px-3 py-2 text-sm font-semibold transition",
+                              autoPlay
+                                ? "border-blue-300 bg-blue-100 text-blue-800 hover:bg-blue-200"
+                                : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                            ].join(" ")}
+                          >
+                            自動播放：{autoPlay ? "開啟" : "關閉"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleFavorite(current.id)}
+                            className={[
+                              "min-h-[44px] rounded-lg border px-3 py-2 text-sm font-semibold transition",
+                              favorites.includes(current.id)
+                                ? "border-amber-400 bg-amber-100 text-amber-800 hover:bg-amber-200"
+                                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                            ].join(" ")}
+                          >
+                            {favorites.includes(current.id) ? "⭐ 已收藏" : "☆ 收藏"}
+                          </button>
+                        </div>
+
+                        <p className="mt-4 text-center text-xs text-slate-500 sm:text-sm">請聽發音並填入平假名</p>
+                        <div className="mt-2 text-center text-3xl font-bold tracking-wide sm:text-5xl">
+                          {current.chinese}
+                        </div>
+
+                        <div className={["mx-auto mt-4 flex flex-wrap justify-center gap-2", shake ? "animate-shake" : ""].join(" ")}>
+                          {answerChars.map((_, idx) => {
+                            const isWrong = wrongIndexes.includes(idx);
+                            const isCurrent = firstEmpty === idx;
+                            return (
+                              <div
+                                key={idx}
+                                className={[
+                                  "h-14 w-12 rounded-lg border-2 bg-white text-center text-2xl leading-[3.2rem] transition sm:h-16 sm:w-14 sm:text-3xl",
+                                  isWrong
+                                    ? "border-rose-500 bg-rose-50"
+                                    : showResultOverlay
+                                    ? "border-emerald-500"
+                                    : isCurrent
+                                    ? "border-blue-500 ring-2 ring-blue-100"
+                                    : "border-slate-300"
+                                ].join(" ")}
+                              >
+                                {inputChars[idx]}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={backspace}
+                            className="min-h-[44px] rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300 active:scale-[0.98]"
+                          >
+                            退格 (Backspace)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearAll}
+                            className="min-h-[44px] rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300 active:scale-[0.98]"
+                          >
+                            清空 (Clear)
+                          </button>
+                        </div>
+
+                        <p
+                          className={[
+                            "mt-3 min-h-6 text-center text-sm font-bold",
+                            statusText === "答對！"
+                              ? "text-emerald-600"
+                              : statusText
+                              ? "text-rose-600"
+                              : "text-slate-400"
+                          ].join(" ")}
+                        >
+                          {statusText || " "}
+                        </p>
+
+                        {showRemoveMistakePrompt && (
+                          <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 animate-fadeInUp">
+                            <p className="mb-2 font-semibold">是否將此題移出錯題本？</p>
+                            <button
+                              type="button"
+                              onClick={() => removeFromMistakeBook(current.id)}
+                              className="min-h-[44px] rounded-lg border border-amber-400 bg-amber-100 px-3 py-2 font-semibold hover:bg-amber-200"
+                            >
+                              是，移出錯題本
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                    <div className="mb-3 grid grid-cols-3 gap-2">
+                      {KEYBOARD_MODES.map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setKeyboardMode(tab.id)}
+                          className={[
+                            "min-h-[44px] rounded-lg border px-2 py-2 text-sm font-semibold transition",
+                            keyboardMode === tab.id
+                              ? tab.id === "special"
+                                ? "border-cyan-400 bg-cyan-100 text-cyan-900"
+                                : "border-blue-400 bg-blue-100 text-blue-900"
+                              : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          ].join(" ")}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mb-3 flex flex-wrap gap-2 text-xs font-semibold">
+                      <span className="rounded-full bg-slate-200 px-3 py-1 text-slate-700">清音</span>
+                      <span className="rounded-full bg-slate-200 px-3 py-1 text-slate-700">濁音/半濁音</span>
+                      <span className="rounded-full bg-cyan-100 px-3 py-1 text-cyan-900">特殊音：ゃ、ゅ、ょ、っ、ー、う、い</span>
+                    </div>
+                    {renderKeyboardPanel()}
+                  </section>
+                </>
+              )}
+            </div>
+
+            {showResultOverlay && current && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4">
+                <div className="w-full max-w-sm animate-pop rounded-2xl border-2 border-emerald-400 bg-white p-6 text-center shadow-xl">
+                  <div className="text-6xl text-emerald-500">✓</div>
+                  <p className="mt-2 text-sm font-semibold text-emerald-700">答對了！</p>
+                  <p className="mt-3 text-3xl font-bold text-slate-800">{current.kanji}</p>
+                  <p className="mt-1 text-xl text-slate-600">{current.kana}</p>
+                </div>
+              </div>
+            )}
+
+            {toast.visible && (
+              <div className="fixed bottom-4 left-1/2 z-50 w-[92vw] max-w-sm -translate-x-1/2 animate-fadeInUp rounded-lg border border-slate-300 bg-slate-900 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg">
+                {toast.text}
+              </div>
+            )}
+
+            {settingsOpen && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4">
+                <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:p-5">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="text-base font-bold sm:text-lg">進度同步設定</h3>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsOpen(false)}
+                      className="min-h-[40px] min-w-[40px] rounded-lg border border-slate-300 bg-slate-100 text-lg hover:bg-slate-200"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 sm:text-sm">
+                    此處可備份或還原 `mistakes` 與 `favorites`。主畫面不顯示長字串，保持介面乾淨。
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={refreshExportString}
+                      className="min-h-[44px] rounded-lg border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-200"
+                    >
+                      重新產生備份字串
+                    </button>
+                    <button
+                      type="button"
+                      onClick={copyExportString}
+                      className="min-h-[44px] rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-200"
+                    >
+                      複製字串
+                    </button>
+                    <button
+                      type="button"
+                      onClick={importProgress}
+                      className="min-h-[44px] rounded-lg border border-emerald-300 bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-200"
+                    >
+                      貼上後匯入
+                    </button>
+                  </div>
+                  <label className="mt-3 block text-xs font-semibold text-slate-600">備份字串（可複製）</label>
+                  <textarea
+                    value={exportText}
+                    readOnly
+                    className="mt-1 min-h-[84px] w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 sm:text-sm"
+                  />
+                  <label className="mt-3 block text-xs font-semibold text-slate-600">匯入內容（貼上 Base64 或 JSON）</label>
+                  <textarea
+                    value={transferText}
+                    onChange={(e) => setTransferText(e.target.value)}
+                    placeholder="貼上要匯入的備份字串"
+                    className="mt-1 min-h-[110px] w-full rounded-lg border border-slate-300 p-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 sm:text-sm"
+                  />
+                  {settingsMessage && (
+                    <p className="mt-2 text-sm font-semibold text-slate-700">{settingsMessage}</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
