@@ -192,6 +192,7 @@
             inputChars: [],
             wrongIndexes: [],
             locked: false,
+            gaveUp: false,
             shake: false,
             statusText: "",
             showResultOverlay: false,
@@ -217,6 +218,7 @@
           inputChars: Array.from(word.kana).map(() => ""),
           wrongIndexes: [],
           locked: false,
+          gaveUp: false,
           shake: false,
           statusText: "",
           showResultOverlay: false,
@@ -354,6 +356,7 @@
                     : oldState.inputChars,
                 wrongIndexes: questionChanged ? [] : oldState.wrongIndexes,
                 locked: questionChanged ? false : oldState.locked,
+                gaveUp: questionChanged ? false : oldState.gaveUp,
                 shake: questionChanged ? false : oldState.shake,
                 statusText: questionChanged ? "" : oldState.statusText,
                 showResultOverlay: questionChanged ? false : oldState.showResultOverlay,
@@ -391,7 +394,7 @@
           function onKeyDown(event) {
             if (event.key !== "Backspace") return;
             if (!activePracticeMode) return;
-            if (!activeState || activeState.roundDone) return;
+            if (!activeState || activeState.roundDone || activeState.gaveUp) return;
             event.preventDefault();
             backspace();
           }
@@ -486,6 +489,7 @@
               inputChars: Array.from(word.kana).map(() => ""),
               wrongIndexes: [],
               locked: false,
+              gaveUp: false,
               shake: false,
               statusText: "",
               showResultOverlay: false,
@@ -559,13 +563,28 @@
               if (nextInput[i] !== answer[i]) wrong.push(i);
             }
 
-            if (wrong.length === 0 && !old.usedHintOnCurrent) {
-              return finalizeCorrect(modeId, old, nextInput);
-            }
+            // 修正：當全填完時，檢查這題是否曾經錯過，或是否用過提示
+            if (wrong.length === 0) {
+              const hasMistake = old.result.wrongSet.includes(old.currentId);
+              
+              if (!hasMistake && !old.usedHintOnCurrent) {
+                return finalizeCorrect(modeId, old, nextInput);
+              } else {
+                // 如果曾經答錯過或用過提示，就算補對了也不能算是「全對」，而是標記完成並列入錯題
+                if (modeNextTimerRef.current[modeId]) clearTimeout(modeNextTimerRef.current[modeId]);
+                modeNextTimerRef.current[modeId] = setTimeout(() => {
+                  gotoNextQuestionOrFinish(modeId);
+                }, 1500);
 
-            if (wrong.length === 0 && old.usedHintOnCurrent) {
-              const allWrong = Array.from({ length: answer.length }, (_, i) => i);
-              return applyWrongAndMark(modeId, { ...old, inputChars: nextInput }, allWrong, "此題已使用提示，判定為錯題。");
+                return {
+                  ...old,
+                  inputChars: nextInput,
+                  wrongIndexes: [],
+                  locked: true,
+                  statusText: "完成！(曾答錯或使用提示，已列入錯題)",
+                  showRemoveMistakePrompt: false
+                };
+              }
             }
 
             return applyWrongAndMark(modeId, { ...old, inputChars: nextInput }, wrong, "有錯字，請手動刪除錯誤字元後重填。");
@@ -619,7 +638,7 @@
 
           addMistakeOnce(activeState.currentId);
           setStateForMode(modeId, (old) => {
-            if (old.usedHintOnCurrent) return old;
+            // 修正：移除了防止多次點擊提示的限制，現在可以一直按提示了
             const wrongSet = old.result.wrongSet.includes(old.currentId)
               ? old.result.wrongSet
               : [...old.result.wrongSet, old.currentId];
@@ -640,6 +659,31 @@
           hintClearTimerRef.current[modeId] = setTimeout(() => {
             setStateForMode(modeId, (old) => ({ ...old, hintIndexes: [] }));
           }, 1200);
+        }
+
+        function giveUp() {
+          if (!activePracticeMode || !activeCurrent || !activeState || activeState.locked || activeState.roundDone) return;
+          const modeId = activePracticeMode;
+          const answer = Array.from(activeCurrent.kana);
+
+          addMistakeOnce(activeState.currentId);
+          setStateForMode(modeId, (old) => {
+            const wrongSet = old.result.wrongSet.includes(old.currentId)
+              ? old.result.wrongSet
+              : [...old.result.wrongSet, old.currentId];
+            return {
+              ...old,
+              inputChars: answer,
+              wrongIndexes: [],
+              locked: true,
+              gaveUp: true,
+              statusText: "已放棄，顯示正確答案。請按「下一題」繼續。",
+              result: {
+                ...old.result,
+                wrongSet
+              }
+            };
+          });
         }
 
         function reshuffleMode(modeId) {
@@ -876,9 +920,18 @@
                     <button
                       type="button"
                       onClick={useHint}
-                      className="min-h-[44px] rounded-lg border border-violet-300 bg-violet-100 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-200"
+                      disabled={activeState?.gaveUp || activeState?.locked}
+                      className="min-h-[44px] rounded-lg border border-violet-300 bg-violet-100 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-200 disabled:opacity-50"
                     >
                       💡 提示
+                    </button>
+                    <button
+                      type="button"
+                      onClick={giveUp}
+                      disabled={activeState?.gaveUp || activeState?.locked}
+                      className="min-h-[44px] rounded-lg border border-rose-300 bg-rose-100 px-3 py-2 text-sm font-semibold text-rose-900 hover:bg-rose-200 disabled:opacity-50 transition"
+                    >
+                      🏳️ 放棄
                     </button>
                   </div>
 
@@ -977,8 +1030,10 @@
                                   ? "border-rose-500 bg-rose-50"
                                   : activeState.showResultOverlay
                                   ? "border-emerald-500"
-                                  : isCurrent
+                                  : isCurrent && !activeState.gaveUp
                                   ? "border-blue-500 ring-2 ring-blue-100"
+                                  : activeState.gaveUp
+                                  ? "border-emerald-400 bg-emerald-50"
                                   : "border-slate-300",
                                 isHint ? "animate-pulseHint border-violet-400 bg-violet-50" : ""
                               ].join(" ")}
@@ -989,28 +1044,42 @@
                         })}
                       </div>
 
-                      <div className="mt-4 flex flex-wrap justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={backspace}
-                          className="min-h-[44px] rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300 active:scale-[0.98]"
-                        >
-                          退格 (Backspace)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={clearAll}
-                          className="min-h-[44px] rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300 active:scale-[0.98]"
-                        >
-                          清空 (Clear)
-                        </button>
-                      </div>
+                      {activeState.gaveUp ? (
+                        <div className="mt-4 flex justify-center animate-fadeInUp">
+                          <button
+                            type="button"
+                            onClick={() => gotoNextQuestionOrFinish(activePracticeMode)}
+                            className="min-h-[44px] w-full max-w-[200px] rounded-lg border border-emerald-400 bg-emerald-100 px-4 py-2 text-lg font-bold text-emerald-900 shadow hover:bg-emerald-200 active:scale-95 transition"
+                          >
+                            下一題 ➔
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="mt-4 flex flex-wrap justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={backspace}
+                            className="min-h-[44px] rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300 active:scale-[0.98]"
+                          >
+                            退格 (Backspace)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearAll}
+                            className="min-h-[44px] rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300 active:scale-[0.98]"
+                          >
+                            清空 (Clear)
+                          </button>
+                        </div>
+                      )}
 
                       <p
                         className={[
                           "mt-3 min-h-6 text-center text-sm font-bold",
                           activeState.statusText === "答對！"
                             ? "text-emerald-600"
+                            : activeState.statusText.includes("完成") || activeState.statusText.includes("放棄")
+                            ? "text-blue-600"
                             : activeState.statusText
                             ? "text-rose-600"
                             : "text-slate-400"
